@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import scala.Tuple2;
 import scala.Tuple3;
 
+import java.io.*;
 import java.util.List;
 
 @Service
@@ -28,27 +29,52 @@ public class SparkService {
         JavaRDD<String> stringJavaRDD = readTextFile("src/main/resources/api-logs/logs-24.04.2024.csv");
         JavaPairRDD<Double, String> averageMap = analyzeAppLogs(stringJavaRDD);
         return logsMapper.rddToDto(averageMap);
-
     }
 
-    public Object[] analyzeLogsFromFile(MultipartFile file) {
-        JavaRDD<String> stringJavaRDD = readTextFile("src/main/resources/api-logs/logs-24.04.2024.csv");
-        JavaPairRDD<Double, String> doubleStringJavaPairRDD = analyzeAppLogs(stringJavaRDD);
-        return doubleStringJavaPairRDD.collect().toArray();
+    public List<LogsAverageResponse> analyzeLogsFromFile(List<MultipartFile> files) {
+        JavaRDD<String> stringJavaRDD = readTextFile(files);
+        JavaPairRDD<Double, String> averageMap = analyzeAppLogs(stringJavaRDD);
+        return logsMapper.rddToDto(averageMap);
     }
-
 
     private JavaRDD<String> readTextFile(String path) {
         return sc.textFile(path);
     }
 
-//    private JavaRDD<String> readTextFile(MultipartFile file) {
-//        return sc.textFile(file);
-//    }
+    private JavaRDD<String> readTextFile(List<MultipartFile> files) {
+        saveFilesLocal(files);
+        return sc.textFile("src/main/resources/api-logs/" + "aggregated_file.txt");
+    }
+
+    public static void saveFilesLocal(List<MultipartFile> files) {
+        if (files != null && !files.isEmpty()) {
+            File outputFile = new File("src/main/resources/api-logs/aggregated_file.txt");
+            try (FileOutputStream os = new FileOutputStream(outputFile)) {
+                for (MultipartFile file : files) {
+                    appendFileContent(file, os);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static void appendFileContent(MultipartFile file, OutputStream outputStream) throws IOException {
+        try (InputStream is = file.getInputStream()) {
+            byte[] buffer = new byte[4096];
+            int readBytes;
+            while ((readBytes = is.read(buffer)) > 0) {
+                outputStream.write(buffer, 0, readBytes);
+            }
+            outputStream.write(System.lineSeparator().getBytes());
+        }
+    }
 
     private static JavaPairRDD<Double, String> analyzeAppLogs(JavaRDD<String> stringJavaRDD) {
-        String header = stringJavaRDD.first();
-        JavaRDD<String> filteredData = stringJavaRDD.filter(row -> !row.equals(header) && !row.trim().isEmpty());
+//        String header = stringJavaRDD.first();
+        JavaRDD<String> filteredData = stringJavaRDD.filter(row -> !row.trim().isEmpty());
+        long count = filteredData.count();
+        System.out.println("Total number of records: " + count);
         JavaRDD<Tuple3<String, String, String>> tuple3JavaRDD = filteredData.map(rawValue -> {
             String[] columns = rawValue.split(",");
             String latency = columns[0];
@@ -74,10 +100,8 @@ public class SparkService {
 
         JavaPairRDD<String, Tuple2<Integer, Double>> endpointStatsReduced = endpointStats.reduceByKey((x, y) -> new Tuple2<>(x._1() + y._1(), x._2() + y._2()));
 
-        // Calculăm durata medie a fiecărui apel pentru fiecare endpoint
         JavaPairRDD<String, Double> averageDurationPerEndpoint = endpointStatsReduced.mapValues(tuple -> tuple._2() / tuple._1());
 
-        // Sortăm endpoint-urile în funcție de durata medie
         return averageDurationPerEndpoint.mapToPair(Tuple2::swap).sortByKey(false);
     }
 }

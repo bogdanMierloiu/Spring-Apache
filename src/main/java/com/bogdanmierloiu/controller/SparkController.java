@@ -2,9 +2,8 @@ package com.bogdanmierloiu.controller;
 
 import com.bogdanmierloiu.dto.LogsAverageResponse;
 import com.bogdanmierloiu.service.SparkService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -24,5 +23,11 @@ public class SparkController {
     @GetMapping("/analyze-internal-files")
     public List<LogsAverageResponse> analyzeInternalFiles() {
         return sparkService.analyzeInternalFiles();
+    }
+
+    @PostMapping
+    public List<LogsAverageResponse> analyzeLogsFromFile(
+            @RequestParam("files") List<MultipartFile> files) {
+        return sparkService.analyzeLogsFromFile(files);
     }
 }
