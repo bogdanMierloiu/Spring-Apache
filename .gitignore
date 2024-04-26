@@ -36,3 +36,4 @@ build/
 logs/
 out/
 generated/
+src/main/resources/api-logs/
